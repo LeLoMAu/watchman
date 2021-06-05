@@ -1,0 +1,8 @@
+searchtweets
+pandas
+requests
+datetime
+bs4
+matplotlib
+nltk
+yfinance
