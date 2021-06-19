@@ -1,10 +1,8 @@
-# https://towardsdatascience.com/how-to-use-the-reddit-api-in-python-5e05ddfd1e5c
-# https://www.reddit.com/dev/api/#GET_new
-
 import requests
 import pandas as pd
 from datetime import datetime
 import logging
+from google.cloud import bigquery
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +13,10 @@ class RedditWatcher:
         """
         RedditWatcher init method.
         It performs the authentication.
+
+        Docs:
+        https://towardsdatascience.com/how-to-use-the-reddit-api-in-python-5e05ddfd1e5c
+        https://www.reddit.com/dev/api/#GET_new
 
         :param personal_use_script: (str) reddit api personal use script.
         :param token: (str) reddit api token.
@@ -75,12 +77,15 @@ class RedditWatcher:
         else:
             raise Exception(res.status_code, res.text)
 
-    def get_new_posts(self, communities: list, how_many_posts=1000):
+    def get_new_posts(self, communities: list, how_many_posts=1000, write_df_to_bq=False, bq_cred_path=None, bq_destination_table_id=None):
         """
-        Get newest posts from Reddit communities.
+        Get newest posts from Reddit communities, and optionally sent to Google BigQuery.
 
         :param communities: (list) the list of communities to take posts from.
         :param how_many_posts: (int=1000) how many posts to get.
+        :param write_df_to_bq: (bool=False) if the result should be written/appended in a Google BigQuery table.
+        :param bq_cred_path: (str=None) Google BigQuery credentials complete path.
+        :param bq_destination_table_id: (str=None) Google BigQuery destination table id.
         :return: A pandas Dataframe containing all the posts.
         """
         logger.info(f'Get first {how_many_posts} new posts from: {communities} started')
@@ -117,18 +122,30 @@ class RedditWatcher:
                 res_result = RedditWatcher._df_from_response(res)
                 posts = posts.append(res_result)
 
-        # Make a new ordered index
-        posts.index = range(len(posts.index))
+        # Set index
+        posts.set_index('id', inplace=True)
+
+        # Write to Google BigQuery
+        if write_df_to_bq:
+            logger.info(f"Start to write the result (nrows: {posts.shape[0]} - ncols: {posts.shape[1]}) to Google BigQuery table {bq_destination_table_id}...")
+            job_status = self._write_df_to_bigquery(df=posts, bq_cred_path=bq_cred_path, bq_destination_table_id=bq_destination_table_id)
+            if job_status != 'DONE':
+                raise Exception(f"Error: Google BigQuery Job status: {job_status}")
+            else:
+                logger.info("Result successfully written to Google BigQuery.")
 
         logger.info(f'Get first {how_many_posts} new posts from: {communities} ended')
 
         return posts
 
-    def get_hot_posts(self, communities):
+    def get_hot_posts(self, communities, write_df_to_bq=False, bq_cred_path=None, bq_destination_table_id=None):
         """
-        Get hottest posts from Reddit communities.
+        Get hottest posts from Reddit communities, and optionally sent to Google BigQuery.
 
         :param communities: (list) the list of communities to take posts from.
+        :param write_df_to_bq: (bool=False) if the result should be written/appended in a Google BigQuery table.
+        :param bq_cred_path: (str=None) Google BigQuery credentials complete path.
+        :param bq_destination_table_id: (str=None) Google BigQuery destination table id.
         :return: A pandas Dataframe containing all the posts.
         """
         logger.info(f'Get first 100 hot posts from: {communities} started')
@@ -150,8 +167,17 @@ class RedditWatcher:
             posts = posts.append(res_result)
             logger.info("{community} finished!".format(community=community))
 
-        # Make a new ordered index
-        posts.index = range(len(posts.index))
+        # Set index
+        posts.set_index('id', inplace=True)
+
+        # Write to Google BigQuery
+        if write_df_to_bq:
+            logger.info(f"Start to write the result (nrows: {posts.shape[0]} - ncols: {posts.shape[1]}) to Google BigQuery table {bq_destination_table_id}...")
+            job_status = self._write_df_to_bigquery(df=posts, bq_cred_path=bq_cred_path, bq_destination_table_id=bq_destination_table_id)
+            if job_status != 'DONE':
+                raise Exception(f"Error: Google BigQuery Job status: {job_status}")
+            else:
+                logger.info("Result successfully written to Google BigQuery.")
 
         logger.info(f'Get first 100 hot posts from: {communities} ended')
 
@@ -188,3 +214,53 @@ class RedditWatcher:
             }, ignore_index=True)
 
         return df
+
+    @staticmethod
+    def _write_df_to_bigquery(df: pd.DataFrame, bq_cred_path: str, bq_destination_table_id: str):
+        """
+        Static method to write a Pandas.DataFrame in a Google BigQuery table.
+
+        :param df: The Pandas.DataFrame to write.
+        :param bq_cred_path: Google BigQuery credentials complete path.
+        :param bq_destination_table_id: Google BigQuery destination table id.
+        :return: The Job Status (str).
+        """
+
+        # Construct a BigQuery client object.
+        if bq_cred_path:
+            client = bigquery.Client.from_service_account_json(bq_cred_path)
+        else:
+            # Logged with the service account which invoke App Engine
+            client = bigquery.Client()
+
+        # Define destinantion table id
+        table_id = bq_destination_table_id
+
+        job_config = bigquery.LoadJobConfig(
+            # Specify a (partial) schema. All columns are always written to the table.
+            # The schema is used to assist in data type definitions for column whose type cannot be auto-detected.
+            schema=[
+                bigquery.SchemaField("id", bigquery.enums.SqlTypeNames.STRING),
+                bigquery.SchemaField("created", bigquery.enums.SqlTypeNames.FLOAT),
+                bigquery.SchemaField("created_utc", bigquery.enums.SqlTypeNames.STRING),
+                bigquery.SchemaField("downs", bigquery.enums.SqlTypeNames.INTEGER),
+                bigquery.SchemaField("kind", bigquery.enums.SqlTypeNames.STRING),
+                bigquery.SchemaField("link_flair_css_class", bigquery.enums.SqlTypeNames.STRING),
+                bigquery.SchemaField("score", bigquery.enums.SqlTypeNames.INTEGER),
+                bigquery.SchemaField("selftext", bigquery.enums.SqlTypeNames.STRING),
+                bigquery.SchemaField("subreddit", bigquery.enums.SqlTypeNames.STRING),
+                bigquery.SchemaField("title", bigquery.enums.SqlTypeNames.STRING),
+                bigquery.SchemaField("total_awards_received", bigquery.enums.SqlTypeNames.INTEGER),
+                bigquery.SchemaField("ups", bigquery.enums.SqlTypeNames.INTEGER),
+                bigquery.SchemaField("upvote_ratio", bigquery.enums.SqlTypeNames.FLOAT),
+            ],
+            # Optionally, set the write disposition. BigQuery appends loaded rows
+            # to an existing table by default, but with WRITE_TRUNCATE write
+            # disposition it replaces the table with the loaded data.
+            write_disposition="WRITE_APPEND",
+        )
+
+        # Make an API request.
+        job = client.load_table_from_dataframe(dataframe=df, destination=table_id, job_config=job_config)
+
+        return job.result().state
