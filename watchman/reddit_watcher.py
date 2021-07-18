@@ -41,6 +41,7 @@ class RedditWatcher:
         """
         ### Getting Access
         logger.info('Reddit Authentication started')
+
         # Request a temporary (2h) OAuth token from Reddit
         # note that CLIENT_ID refers to 'personal use script' and SECRET_TOKEN to 'token'
         auth = requests.auth.HTTPBasicAuth(self.personal_use_script, self.token)
