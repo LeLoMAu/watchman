@@ -1,10 +1,9 @@
 import requests
 import pandas as pd
-from datetime import datetime
 import logging
+from datetime import datetime
+from string import Template
 from google.cloud import bigquery
-
-logger = logging.getLogger(__name__)
 
 
 class RedditWatcher:
@@ -40,7 +39,8 @@ class RedditWatcher:
         :return: No return.
         """
         ### Getting Access
-        logger.info('Reddit Authentication started')
+        log_message = Template('Reddit Authentication started')
+        logging.info(log_message)
 
         # Request a temporary (2h) OAuth token from Reddit
         # note that CLIENT_ID refers to 'personal use script' and SECRET_TOKEN to 'token'
@@ -70,7 +70,8 @@ class RedditWatcher:
                 requests.get('https://oauth.reddit.com/api/v1/me', headers=headers)
 
                 self.headers = headers
-                logger.info('Reddit Authentication ended')
+                log_message = Template('Reddit Authentication ended')
+                logging.info(log_message)
 
             except KeyError:
                 raise Exception("Error: {error}".format(error=res.json()['error']))
@@ -89,7 +90,8 @@ class RedditWatcher:
         :param bq_destination_table_id: (str=None) Google BigQuery destination table id.
         :return: A pandas Dataframe containing all the posts.
         """
-        logger.info(f'Get first {how_many_posts} new posts from: {communities} started')
+        log_message = Template('Get first $how_many_posts new posts from: $communities started')
+        logging.info(log_message.safe_substitute(how_many_posts=how_many_posts, communities=communities))
 
         # initialize empty dataframe to store posts
         posts = pd.DataFrame()
@@ -97,9 +99,11 @@ class RedditWatcher:
         # We are going to retrieve the 1000 hottest posts in each community
         for community in communities:
 
-            logger.info('Working on {}'.format(community))
+            log_message = Template('Working on $community')
+            logging.info(log_message.safe_substitute(community=community))
             # loop through 10 times (returning 1000 posts)
-            logger.info('{community} - Loop in range: {range}'.format(community=community, range=range(int(how_many_posts / 100))))
+            log_message = Template('$community - Loop in range: $range')
+            logging.info(log_message.safe_substitute(community=community, range=range(int(how_many_posts / 100))))
 
             for i in range(int(how_many_posts / 100)):
                 # make request
@@ -108,12 +112,14 @@ class RedditWatcher:
                 else:
                     if len(res_result) > 0:
                         last_post = res_result.sort_values(by='created_utc', ascending=True).iloc[0]
-                        logger.info("Bucket last post timestamp: {last_post_timestamp}".format(last_post_timestamp=last_post['created_utc']))
+                        log_message = Template("Bucket last post timestamp: $last_post_timestamp")
+                        logging.info(log_message.safe_substitute(last_post_timestamp=last_post['created_utc']))
                         last_post_fullname = last_post['kind'] + '_' + last_post['id']
 
                         params = {'limit': 100, 'after': last_post_fullname}
                     else:
-                        logger.info("{community} finished!".format(community=community))
+                        log_message = Template("$community finished!")
+                        logging.info(log_message.safe_substitute(community=community))
                         break
 
                 res = requests.get('https://oauth.reddit.com/r/{}/new'.format(community),
@@ -128,14 +134,17 @@ class RedditWatcher:
 
         # Write to Google BigQuery
         if write_df_to_bq:
-            logger.info(f"Start to write the result (nrows: {posts.shape[0]} - ncols: {posts.shape[1]}) to Google BigQuery table {bq_destination_table_id}...")
+            log_message = Template("Start to write the result (nrows: $nrows - ncols: $ncols) to Google BigQuery table $bq_destination_table_id...")
+            logging.info(log_message.safe_substitute(nrows=posts.shape[0], ncols=posts.shape[1], bq_destination_table_id=bq_destination_table_id))
             job_status = self._write_df_to_bigquery(df=posts, bq_cred_path=bq_cred_path, bq_destination_table_id=bq_destination_table_id)
             if job_status != 'DONE':
                 raise Exception(f"Error: Google BigQuery Job status: {job_status}")
             else:
-                logger.info("Result successfully written to Google BigQuery.")
+                log_message = Template("Result successfully written to Google BigQuery.")
+                logging.info(log_message)
 
-        logger.info(f'Get first {how_many_posts} new posts from: {communities} ended')
+        log_message = Template('Get first $how_many_posts new posts from: $communities ended')
+        logging.info(log_message.safe_substitute(how_many_posts=how_many_posts, communities=communities))
 
         return posts
 
@@ -149,13 +158,15 @@ class RedditWatcher:
         :param bq_destination_table_id: (str=None) Google BigQuery destination table id.
         :return: A pandas Dataframe containing all the posts.
         """
-        logger.info(f'Get first 100 hot posts from: {communities} started')
+        log_message = Template('Get first 100 hot posts from: $communities started')
+        logging.info(log_message.safe_substitute(communities=communities))
         # initialize empty dataframe to store posts
         posts = pd.DataFrame()
 
         # We are going to retrieve the 100 hottest posts in each community
         for community in communities:
-            logger.info('Working on {}'.format(community))
+            log_message = Template('Working on $community')
+            logging.info(log_message.safe_substitute(community=community))
 
             # make request
             params = {'limit': 100}
@@ -166,21 +177,25 @@ class RedditWatcher:
 
             res_result = RedditWatcher._df_from_response(res)
             posts = posts.append(res_result)
-            logger.info("{community} finished!".format(community=community))
+            log_message = Template("$community finished!")
+            logging.info(log_message.safe_substitute(community=community))
 
         # Set index
         posts.set_index('id', inplace=True)
 
         # Write to Google BigQuery
         if write_df_to_bq:
-            logger.info(f"Start to write the result (nrows: {posts.shape[0]} - ncols: {posts.shape[1]}) to Google BigQuery table {bq_destination_table_id}...")
+            log_message = Template("Start to write the result (nrows: $nrwos - ncols: $ncols) to Google BigQuery table $bq_destination_table_id...")
+            logging.info(log_message.safe_substitute(nrows=posts.shape[0], ncols=posts.shape[1], bq_destination_table_id=bq_destination_table_id))
             job_status = self._write_df_to_bigquery(df=posts, bq_cred_path=bq_cred_path, bq_destination_table_id=bq_destination_table_id)
             if job_status != 'DONE':
                 raise Exception(f"Error: Google BigQuery Job status: {job_status}")
             else:
-                logger.info("Result successfully written to Google BigQuery.")
+                log_message = Template("Result successfully written to Google BigQuery.")
+                logging.info(log_message)
 
-        logger.info(f'Get first 100 hot posts from: {communities} ended')
+        log_message = Template('Get first 100 hot posts from: $communities ended')
+        logging.info(log_message.safe_substitute(communities=communities))
 
         return posts
 

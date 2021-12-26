@@ -3,9 +3,8 @@ import logging
 import requests
 import pandas as pd
 import time
+from string import Template
 from google.cloud import bigquery
-
-logger = logging.getLogger(__name__)
 
 
 class TwitterWatcher:
@@ -14,7 +13,7 @@ class TwitterWatcher:
     It enables to authenticate to the Twitter API and iteratively perform query and get results.
     Twitter Developer portal: https://developer.twitter.com/en/portal/dashboard
 
-    Max 500.000 tweets/month
+    Max 2.000.000 tweets/month
     Max 450 requests/15 min per app auth
     Max 180 requests/15 min per user auth
     """
@@ -36,8 +35,8 @@ class TwitterWatcher:
         :param since_id: (int) the id of the last tweet got.
         :return: No return.
         """
-
-        logger.info("Making query from hashtags: {hashtags}".format(hashtags=hashtags))
+        log_message = Template("Making query from hashtags: $hashtags")
+        logging.info(log_message.safe_substitute(hashtags=hashtags))
 
         # Unicode: replace # with %23
         hashtags = [hashtag.replace('#', '%23') for hashtag in hashtags]
@@ -70,7 +69,8 @@ class TwitterWatcher:
         if since_id is not None:
             self.url = self.url + '&since_id={since_id}'.format(since_id=since_id)
 
-        logger.info("Query made.")
+        log_message = Template("Query made.")
+        logging.info(log_message)
 
     def _get_page_results(self):
         """
@@ -79,7 +79,8 @@ class TwitterWatcher:
         :return: No return.
         """
 
-        logger.info("Submitting the url: {url}".format(url=self.url))
+        log_message = Template("Submitting the url: $url")
+        logging.info(log_message.safe_substitute(url=self.url))
 
         if self.url is not None:
 
@@ -88,7 +89,8 @@ class TwitterWatcher:
             n_request_tries = 1
 
             response = requests.request("GET", self.url, headers=self.headers)
-            logger.info(f'Twitter Response Status Code: {response.status_code}')
+            log_message = Template('Twitter Response Status Code: $status_code')
+            logging.info(log_message.safe_substitute(status_code=response.status_code))
 
             while response.status_code != 200 and n_request_tries < max_request_tries:
                 # Wait 10 seconds and re-try
@@ -104,7 +106,8 @@ class TwitterWatcher:
                 return pd.DataFrame(), response.json()['meta']
 
         else:
-            logger.warning('Please make a query before submitting.')
+            log_message = Template('Please make a query before submitting.')
+            logging.warning(log_message)
 
     def write_results(self, hashtags: list, start_time=None, end_time=None, max_results_per_page=100, max_results=15000, write_df_to_bq=False, bq_cred_path=None, bq_destination_table_id=None):
         """
@@ -136,7 +139,8 @@ class TwitterWatcher:
             df_page_results, meta_dict = self._get_page_results()
             df_results = df_results.append(df_page_results)
 
-            logger.info("Tweets count: {tweets_count}".format(tweets_count=df_results.shape[0]))
+            log_message = Template("Tweets count: $count")
+            logging.info(log_message.safe_substitute(count=df_results.shape[0]))
 
             # Sleep 1 seconds
             # We ask for at most 15000 tweets each night, i.e., 150 requests of 100 tweets
@@ -148,12 +152,18 @@ class TwitterWatcher:
 
         # Write to Google BigQuery
         if write_df_to_bq:
-            logger.info(f"Start to write the result (nrows: {df_results.shape[0]} - ncols: {df_results.shape[1]}) to Google BigQuery table {bq_destination_table_id}...")
+            log_message = Template("Start to write the result (nrows: $nrows - ncols: $ncols) to Google BigQuery table $bq_destination_table_id...")
+            logging.info(log_message.safe_substitute(
+                nrows=df_results.shape[0],
+                ncols=df_results.shape[1],
+                bq_destination_table_id=bq_destination_table_id
+            ))
             job_status = self._write_df_to_bigquery(df=df_results, bq_cred_path=bq_cred_path, bq_destination_table_id=bq_destination_table_id)
             if job_status != 'DONE':
                 raise Exception(f"Error: Google BigQuery Job status: {job_status}")
             else:
-                logger.info("Result successfully written to Google BigQuery.")
+                log_message = Template("Result successfully written to Google BigQuery.")
+                logging.info(log_message)
 
         return df_results
 
@@ -208,7 +218,8 @@ class TwitterWatcher:
         # Drop redundant author id column
         out.drop(['id'], axis=1, inplace=True)
 
-        logger.info("Url submitted and results obtained.")
+        log_message = Template("Url submitted and results obtained.")
+        logging.info(log_message)
 
         return out
 
