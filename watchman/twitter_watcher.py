@@ -241,7 +241,7 @@ class TwitterWatcher:
             # Logged with the service account which invoke App Engine
             client = bigquery.Client()
 
-        # Define destinantion table id
+        # Define destination table id
         table_id = bq_destination_table_id
 
         # Define Job Configuration
