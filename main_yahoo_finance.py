@@ -12,9 +12,24 @@ def watchman_yahoo_finance(request):
     :param request: a placeholder fot Cloud Function purpose.
     :return: No return.
     """
+
+    # Get request parameters
+    request_json = request.get_json(silent=True)
+    request_args = request.args
+
+    if request_json and 'n_round' in request_json:
+        n_round = int(request_json['n_round'])
+    elif request_args and 'n_round' in request_args:
+        n_round = int(request_args['n_round'])
+    else:
+        n_round = 1
+
+    # Number of total daily round of this Cloud Function
+    n_daily_round = 10
+
     current_time = datetime.utcnow()
-    log_message = Template('Cloud Function watchman_yahoo_finance was triggered on $time')
-    logging.info(log_message.safe_substitute(time=current_time))
+    log_message = Template('Cloud Function watchman_yahoo_finance round $n_round of $n_daily_round was triggered on $time')
+    logging.info(log_message.safe_substitute(n_round=n_round, n_daily_round=n_daily_round, time=current_time))
 
     try:
         # Get Yahoo Finance API key
@@ -37,10 +52,23 @@ def watchman_yahoo_finance(request):
         # Yahoo Finance Watcher init
         yahoo_finance_watcher = YahooFinanceWatcher(yahoo_finance_api_key=yahoo_finance_api_key_value)
         yahoo_finance_watcher.write_results(
-            trending_url=config_vars['yahoo_finance_trending_url'],
-            trending_regions=config_vars['yahoo_finance_trending_regions'],
-            bq_trending_table_id=config_vars['yahoo_finance_trending_table_id'],
-            write_df_to_bq=True
+            n_round=n_round,
+            n_daily_round=n_daily_round,
+            close_price_url=config_vars['yf_close_price_url'],
+            close_price_most_discussed_stocks_query=config_vars['yf_most_discussed_stocks'],
+            close_price_ticker_variants_query=config_vars['yf_ticker_variants'],
+            close_price_daily_requests=config_vars['yf_close_price_daily_requests'],
+            close_price_symbols_per_request=config_vars['yf_close_price_symbols_per_request'],
+            close_price_max_retry=config_vars['yf_close_price_max_retry'],
+            close_price_interval=config_vars['yf_close_price_interval'],
+            close_price_range=config_vars['yf_close_price_range'],
+            trending_url=config_vars['yf_trending_url'],
+            trending_regions=config_vars['yf_trending_regions'],
+            write_to_bq=True,
+            bq_close_price_delta_id=config_vars['yf_close_price_delta'],
+            bq_close_price_id=config_vars['yf_close_price'],
+            bq_ticker_not_found_id=config_vars['yf_ticker_not_found'],
+            bq_trending_table_id=config_vars['yf_trending'],
         )
 
     except Exception as error:

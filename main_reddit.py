@@ -49,14 +49,14 @@ def watchman_reddit(request):
             communities=config_vars['reddit_communities'],
             how_many_posts=config_vars['reddit_max_new_posts'],
             write_df_to_bq=True,
-            bq_destination_table_id=config_vars['reddit_new_posts_table_id']
+            bq_destination_table_id=config_vars['reddit_new_posts']
         )
 
         # Get 100 hottest posts from reddit communities
         reddit_watcher.get_hot_posts(
             communities=config_vars['reddit_communities'],
             write_df_to_bq=True,
-            bq_destination_table_id=config_vars['reddit_hot_posts_table_id']
+            bq_destination_table_id=config_vars['reddit_hot_posts']
         )
 
     except Exception as error:

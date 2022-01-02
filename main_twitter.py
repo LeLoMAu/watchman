@@ -41,7 +41,7 @@ def watchman_twitter(request):
             max_results_per_page=100,
             max_results=config_vars['twitter_max_tweets'],
             write_df_to_bq=True,
-            bq_destination_table_id=config_vars['twitter_tweets_table_id']
+            bq_destination_table_id=config_vars['twitter_tweets']
         )
 
     except Exception as error:
