@@ -14,15 +14,8 @@ def watchman_yahoo_finance(request):
     """
 
     # Get request parameters
-    request_json = request.get_json(silent=True)
-    request_args = request.args
-
-    if request_json and 'n_round' in request_json:
-        n_round = int(request_json['n_round'])
-    elif request_args and 'n_round' in request_args:
-        n_round = int(request_args['n_round'])
-    else:
-        n_round = 1
+    request_headers = request.headers
+    n_round = int(request_headers.get('n_round', 1))
 
     # Number of total daily round of this Cloud Function
     n_daily_round = 10
