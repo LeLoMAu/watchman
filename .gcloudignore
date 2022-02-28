@@ -12,6 +12,7 @@
 # below:
 .git
 .gitignore
+.dockerignore
 /venv/
 /credentials/
 cli.txt

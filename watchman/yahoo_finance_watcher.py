@@ -62,8 +62,6 @@ class YahooFinanceWatcher:
 
     def _retrieve_write_close_price(
             self,
-            n_round: int,
-            n_daily_round: int,
             yf_url: str,
             most_discussed_stocks_query: str,
             ticker_variants_query: str,
@@ -91,9 +89,7 @@ class YahooFinanceWatcher:
 
         # Retrieve most discussed stocks and transform to a str
         most_discussed_stocks_df = client.query(most_discussed_stocks_query.format(
-            close_price_total_tickers=daily_requests * symbols_per_request,
-            n_round=n_round,
-            n_daily_round=n_daily_round
+            close_price_total_tickers=daily_requests * symbols_per_request
         )).to_dataframe()
         most_discussed_tickers_str = ', '.join(f"'{stock}'" for stock in most_discussed_stocks_df['ticker'])
 
@@ -153,10 +149,10 @@ class YahooFinanceWatcher:
 
             if write_to_bq:
                 # Write close prices to BigQuery
-                log_message = Template("Start to write results (nrows: $nrows - ncols: $ncols) to Google BigQuery table $bq_destination_table_id...")
+                log_message = Template("Start to write results (n_rows: $n_rows - n_cols: $n_cols) to Google BigQuery table $bq_destination_table_id...")
                 logging.info(log_message.safe_substitute(
-                    nrows=df.shape[0],
-                    ncols=df.shape[1],
+                    n_rows=df.shape[0],
+                    n_cols=df.shape[1],
                     bq_destination_table_id=bq_close_price_delta_id
                 ))
 
@@ -176,10 +172,10 @@ class YahooFinanceWatcher:
                     logging.info(log_message)
 
                 # Write tickers not found to BigQuery
-                log_message = Template("Start to write results (nrows: $nrows - ncols: $ncols) to Google BigQuery table $bq_destination_table_id...")
+                log_message = Template("Start to write results (n_rows: $n_rows - n_cols: $n_cols) to Google BigQuery table $bq_destination_table_id...")
                 logging.info(log_message.safe_substitute(
-                    nrows=df_ticker_not_found.shape[0],
-                    ncols=df_ticker_not_found.shape[1],
+                    n_rows=df_ticker_not_found.shape[0],
+                    n_cols=df_ticker_not_found.shape[1],
                     bq_destination_table_id=bq_ticker_not_found_id
                 ))
 
@@ -232,8 +228,6 @@ class YahooFinanceWatcher:
 
     def write_results(
             self,
-            n_round: int,
-            n_daily_round: int,
             close_price_url: str,
             close_price_most_discussed_stocks_query: str,
             close_price_ticker_variants_query: str,
@@ -253,8 +247,6 @@ class YahooFinanceWatcher:
     ):
         """
         # TODO: DOC
-        :param n_round:
-        :param n_daily_round:
         :param close_price_url:
         :param close_price_most_discussed_stocks_query:
         :param close_price_ticker_variants_query:
@@ -277,8 +269,6 @@ class YahooFinanceWatcher:
 
         ### Close Price
         self._retrieve_write_close_price(
-            n_round=n_round,
-            n_daily_round=n_daily_round,
             yf_url=close_price_url,
             most_discussed_stocks_query=close_price_most_discussed_stocks_query,
             ticker_variants_query=close_price_ticker_variants_query,
@@ -295,43 +285,42 @@ class YahooFinanceWatcher:
         )
 
         ### Trending
-        if n_round == 1:
-            # Retrieve trending tickers
-            trending_df = self._retrieve_trending(
-                trending_url=trending_url,
-                trending_regions=trending_regions
+        # Retrieve trending tickers
+        trending_df = self._retrieve_trending(
+            trending_url=trending_url,
+            trending_regions=trending_regions
+        )
+        # Write trending to BigQuery
+        if write_to_bq:
+            log_message = Template("Start to write the result (n_rows: $n_rows - n_cols: $n_cols) to Google BigQuery table $bq_destination_table_id...")
+            logging.info(log_message.safe_substitute(
+                n_rows=trending_df.shape[0],
+                n_cols=trending_df.shape[1],
+                bq_destination_table_id=bq_trending_table_id
+            ))
+
+            # Define job config
+            job_config = bigquery.LoadJobConfig(
+                schema=[
+                    bigquery.SchemaField("day", bigquery.enums.SqlTypeNames.DATE),
+                    bigquery.SchemaField("ticker", bigquery.enums.SqlTypeNames.STRING),
+                    bigquery.SchemaField("region", bigquery.enums.SqlTypeNames.STRING)
+                ],
+                write_disposition="WRITE_APPEND",
             )
-            # Write trending to BigQuery
-            if write_to_bq:
-                log_message = Template("Start to write the result (nrows: $nrows - ncols: $ncols) to Google BigQuery table $bq_destination_table_id...")
-                logging.info(log_message.safe_substitute(
-                    nrows=trending_df.shape[0],
-                    ncols=trending_df.shape[1],
-                    bq_destination_table_id=bq_trending_table_id
-                ))
 
-                # Define job config
-                job_config = bigquery.LoadJobConfig(
-                    schema=[
-                        bigquery.SchemaField("day", bigquery.enums.SqlTypeNames.DATE),
-                        bigquery.SchemaField("ticker", bigquery.enums.SqlTypeNames.STRING),
-                        bigquery.SchemaField("region", bigquery.enums.SqlTypeNames.STRING)
-                    ],
-                    write_disposition="WRITE_APPEND",
-                )
-
-                # Submit request
-                job_status = self._write_df_to_bigquery(
-                    df=trending_df,
-                    job_config=job_config,
-                    bq_destination_table_id=bq_trending_table_id,
-                    bq_cred_path=bq_cred_path
-                )
-                if job_status != 'DONE':
-                    raise Exception(f"Error: Google BigQuery Job status: {job_status}")
-                else:
-                    log_message = Template("Result successfully written to Google BigQuery.")
-                    logging.info(log_message)
+            # Submit request
+            job_status = self._write_df_to_bigquery(
+                df=trending_df,
+                job_config=job_config,
+                bq_destination_table_id=bq_trending_table_id,
+                bq_cred_path=bq_cred_path
+            )
+            if job_status != 'DONE':
+                raise Exception(f"Error: Google BigQuery Job status: {job_status}")
+            else:
+                log_message = Template("Result successfully written to Google BigQuery.")
+                logging.info(log_message)
 
     @staticmethod
     def _write_df_to_bigquery(

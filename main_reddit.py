@@ -10,7 +10,7 @@ def watchman_reddit(request):
     """
     Cloud Function to download reddit posts and store them in BigQuery.
 
-    :param request: a placeholder fot Cloud Function purpose.
+    :param request: a placeholder for Cloud Function purpose.
     :return: No return.
     """
     current_time = datetime.utcnow()
